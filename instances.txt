@@ -1,0 +1,5 @@
+zigbee2mqtt_1_kuche|Zigbee2MQTT 1 Küche|/config/zigbee2mqtt_1_kuche
+zigbee2mqtt_2_buro|Zigbee2MQTT 2 Büro|/config/zigbee2mqtt_2_buro
+zigbee2mqtt_3_gastezimmer|Zigbee2MQTT 3 Gästezimmer|/config/zigbee2mqtt_3_gastezimmer
+zigbee2mqtt_4_ankleide|Zigbee2MQTT 4 Ankleide|/config/zigbee2mqtt_4_ankleide
+zigbee2mqtt_6_aussen|Zigbee2MQTT 6 Außen|/config/zigbee2mqtt_6_aussen

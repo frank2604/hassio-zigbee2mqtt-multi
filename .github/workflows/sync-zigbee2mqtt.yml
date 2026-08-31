@@ -1,0 +1,70 @@
+name: Sync Zigbee2MQTT
+
+# Ein einziger Workflow: prueft das offizielle Add-on-Repository auf ein
+# neues Release und schreibt die Instanz-Konfigurationen fort.
+# Der zuletzt verarbeitete Tag steht in .last-synced-tag — dadurch braucht
+# es weder ein GitHub-Release noch das Recht, Workflows anzustossen.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"   # taeglich 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine upstream release
+        id: upstream
+        run: |
+          LATEST=$(curl -fsSL https://api.github.com/repos/zigbee2mqtt/hassio-zigbee2mqtt/releases/latest | jq -r '.tag_name')
+          LAST=$(cat .last-synced-tag 2>/dev/null || echo "none")
+          echo "Upstream: $LATEST — hier zuletzt: $LAST"
+          echo "latest=$LATEST" >> $GITHUB_OUTPUT
+          if [ "$LATEST" = "$LAST" ] || [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Fetch upstream config.json
+        if: steps.upstream.outputs.changed == 'true'
+        run: |
+          curl -fsSL -o upstream-config.json \
+            https://raw.githubusercontent.com/zigbee2mqtt/hassio-zigbee2mqtt/master/zigbee2mqtt/config.json
+          jq -e '.version and .image' upstream-config.json > /dev/null
+          IMAGE=$(jq -r '.image' upstream-config.json)
+          if [ "$IMAGE" != "ghcr.io/zigbee2mqtt/zigbee2mqtt-{arch}" ]; then
+            echo "Unerwartetes Image: $IMAGE — Abbruch." >&2
+            exit 1
+          fi
+
+      - name: Generate instance configs
+        if: steps.upstream.outputs.changed == 'true'
+        run: |
+          set -e
+          while IFS='|' read -r slug name datapath; do
+            [ -z "$slug" ] && continue
+            jq --arg n "$name" --arg s "$slug" --arg d "$datapath" \
+               '.name = $n | .slug = $s | .options.data_path = $d | .ports["8485/tcp"] = null' \
+               upstream-config.json > "$slug/config.json"
+            echo "aktualisiert: $slug"
+          done < instances.txt
+          rm -f upstream-config.json
+          echo "${{ steps.upstream.outputs.latest }}" > .last-synced-tag
+
+      - name: Commit changes
+        if: steps.upstream.outputs.changed == 'true'
+        run: |
+          git config --global user.name 'github-actions'
+          git config --global user.email 'github-actions@github.com'
+          git add ./*/config.json .last-synced-tag
+          git diff --staged --quiet && echo "Keine Aenderungen." && exit 0
+          git commit -m "Zigbee2MQTT ${{ steps.upstream.outputs.latest }}"
+          git push
